@@ -2,7 +2,7 @@ use sactor::sactor;
 
 struct Hello {}
 
-#[sactor]
+#[sactor(pub(crate))]
 impl Hello {
     pub(crate) fn greet(&self) -> String {
         "Hello, Sactor!".to_string()

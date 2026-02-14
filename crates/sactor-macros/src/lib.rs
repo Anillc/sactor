@@ -3,12 +3,17 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
     Error, FnArg, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat, PatIdent, Result,
-    ReturnType, Type, parse2, spanned::Spanned,
+    ReturnType, Type, Visibility, parse2, spanned::Spanned,
 };
 
 #[manyhow]
 #[proc_macro_attribute]
-pub fn sactor(_: TokenStream, item: TokenStream) -> Result<TokenStream> {
+pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
+    let handle_vis: Visibility = if attr.is_empty() {
+        Visibility::Inherited
+    } else {
+        parse2(attr)?
+    };
     let mut input: ItemImpl = parse2(item)?;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -198,15 +203,15 @@ pub fn sactor(_: TokenStream, item: TokenStream) -> Result<TokenStream> {
         }
 
         #[derive(Clone)]
-        pub struct #handle_ident #impl_generics #where_clause (tokio::sync::mpsc::UnboundedSender<#events_ident #ty_generics>);
+        #handle_vis struct #handle_ident #impl_generics #where_clause (tokio::sync::mpsc::UnboundedSender<#events_ident #ty_generics>);
         impl #impl_generics #handle_ident #ty_generics #where_clause {
             #(#handle_items)*
 
-            pub fn is_running(&self) -> bool {
+            #handle_vis fn is_running(&self) -> bool {
                 !self.0.is_closed()
             }
 
-            pub fn stop(&self) {
+            #handle_vis fn stop(&self) {
                 let _ = self.0.send(#events_ident::stop);
             }
         }
