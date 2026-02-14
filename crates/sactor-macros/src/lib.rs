@@ -98,8 +98,16 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let mut arg_types = Vec::new();
         let mut arg_names = Vec::new();
         for (i, arg) in &mut handle_sig.inputs.iter_mut().enumerate() {
-            let FnArg::Typed(arg) = arg else {
-                continue;
+            let arg = match arg {
+                FnArg::Typed(arg) => arg,
+                FnArg::Receiver(arg) => {
+                    arg.mutability = None;
+                    let Type::Reference(reference) = arg.ty.as_mut() else {
+                        return Err(Error::new_spanned(&arg.ty, "expected a reference"));
+                    };
+                    reference.mutability = None;
+                    continue;
+                }
             };
             arg_types.push(arg.ty.clone());
             let arg_name = format!("arg{}", i);
