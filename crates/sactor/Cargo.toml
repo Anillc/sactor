@@ -1,9 +1,14 @@
 [package]
 name = "sactor"
-version = "0.1.0"
-edition = "2024"
+
+description.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
-sactor-macros = { path = "../sactor-macros" }
+sactor-macros = { version = "0.1.0", path = "../sactor-macros" }
 thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["full"] }
