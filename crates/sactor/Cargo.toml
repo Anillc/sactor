@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 sactor-macros = { path = "../sactor-macros" }
+thiserror = "2.0.18"
+tokio = { version = "1.49.0", features = ["full"] }
