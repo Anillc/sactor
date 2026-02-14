@@ -26,7 +26,6 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let handle_ident = Ident::new(&format!("{}Handle", self_ident), self_ident.span());
     let events_ident = Ident::new(&format!("{}Events", self_ident), self_ident.span());
 
-    // generate phantom data
     let type_params: Vec<_> = input
         .generics
         .params
@@ -39,11 +38,6 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             }
         })
         .collect();
-    let phantom_variant = if type_params.is_empty() {
-        quote! {}
-    } else {
-        quote! { __phantom(std::marker::PhantomData<(#(#type_params),*)>), }
-    };
 
     let mut event_variants = Vec::new();
     let mut handle_items = Vec::new();
@@ -192,7 +186,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                     match rx.recv().await {
                         #(#run_arms),*
                         Some(#events_ident::stop) | None => break,
-                        _ => unreachable!(),
+                        Some(#events_ident::phantom(_)) => unreachable!(),
                     }
                 }
             };
@@ -206,8 +200,8 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         #[allow(non_camel_case_types)]
         enum #events_ident #impl_generics #where_clause {
             #(#event_variants),*,
-            #phantom_variant
             stop,
+            phantom(std::marker::PhantomData<(#(#type_params),*)>),
         }
 
         #[derive(Clone)]
