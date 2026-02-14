@@ -1,7 +1,10 @@
 use manyhow::manyhow;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Error, FnArg, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat, PatIdent, Result, ReturnType, Type, parse2, spanned::Spanned};
+use syn::{
+    Error, FnArg, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat, PatIdent, Result,
+    ReturnType, Type, parse2, spanned::Spanned,
+};
 
 #[manyhow]
 #[proc_macro_attribute]
@@ -19,13 +22,18 @@ pub fn sactor(_: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let events_ident = Ident::new(&format!("{}Events", self_ident), self_ident.span());
 
     // generate phantom data
-    let type_params: Vec<_> = input.generics.params.iter().filter_map(|p| {
-        if let GenericParam::Type(tp) = p {
-            Some(&tp.ident)
-        } else {
-            None
-        }
-    }).collect();
+    let type_params: Vec<_> = input
+        .generics
+        .params
+        .iter()
+        .filter_map(|p| {
+            if let GenericParam::Type(tp) = p {
+                Some(&tp.ident)
+            } else {
+                None
+            }
+        })
+        .collect();
     let phantom_variant = if type_params.is_empty() {
         quote! {}
     } else {
@@ -36,7 +44,10 @@ pub fn sactor(_: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let mut handle_items = Vec::new();
     let mut run_arms = Vec::new();
     for item in &mut input.items {
-        let ImplItem::Fn(ImplItemFn { attrs, vis, sig, .. }) = item else {
+        let ImplItem::Fn(ImplItemFn {
+            attrs, vis, sig, ..
+        }) = item
+        else {
             continue;
         };
         if sig.inputs.is_empty() {
@@ -45,12 +56,15 @@ pub fn sactor(_: TokenStream, item: TokenStream) -> Result<TokenStream> {
         match sig.inputs.first().unwrap() {
             FnArg::Typed(_) => continue,
             FnArg::Receiver(receiver) if receiver.reference.is_none() => continue,
-            _ => {},
+            _ => {}
         }
 
         // reject method-level generics
         if !sig.generics.params.is_empty() {
-            return Err(Error::new_spanned(&sig.generics, "should not have method-level generics"));
+            return Err(Error::new_spanned(
+                &sig.generics,
+                "should not have method-level generics",
+            ));
         }
 
         // need a reply?
@@ -69,7 +83,7 @@ pub fn sactor(_: TokenStream, item: TokenStream) -> Result<TokenStream> {
             ReturnType::Type(_, ty) => {
                 reply = true;
                 quote! { #ty }
-            },
+            }
         };
         let mut handle_sig = sig.clone();
         handle_sig.asyncness = Some(parse2(quote! { async })?);
@@ -120,7 +134,9 @@ pub fn sactor(_: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
         handle_items.push(f);
         if reply {
-            event_variants.push(quote! { #event_name(#arg_typle_type, tokio::sync::oneshot::Sender<#output>) });
+            event_variants.push(
+                quote! { #event_name(#arg_typle_type, tokio::sync::oneshot::Sender<#output>) },
+            );
             if sig.asyncness.is_some() {
                 run_arms.push(quote! {
                     Some(#events_ident::#event_name(#arg_tuple, tx)) => {
