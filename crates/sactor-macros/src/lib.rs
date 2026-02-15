@@ -217,6 +217,10 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 !self.0.is_closed()
             }
 
+            #handle_vis async fn closed(&self) {
+                self.0.closed().await;
+            }
+
             #handle_vis fn stop(&self) {
                 let _ = self.0.send(#events_ident::stop);
             }
