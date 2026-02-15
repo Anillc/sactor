@@ -11,8 +11,7 @@ impl Hello {
 
 #[tokio::main]
 async fn main() {
-    let hello = Hello {};
-    let (future, handle) = hello.run();
+    let (future, handle) = Hello::run(|_| Hello {});
     tokio::spawn(future);
 
     let handle = handle.clone();

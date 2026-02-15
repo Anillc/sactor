@@ -147,14 +147,14 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             if sig.asyncness.is_some() {
                 run_arms.push(quote! {
                     Some(#events_ident::#event_name(#arg_tuple, tx)) => {
-                        let fut = self.#event_name #arg_tuple.await;
+                        let fut = actor.#event_name #arg_tuple.await;
                         let _ = tx.send(fut);
                     }
                 });
             } else {
                 run_arms.push(quote! {
                     Some(#events_ident::#event_name(#arg_tuple, tx)) => {
-                        let res = self.#event_name #arg_tuple;
+                        let res = actor.#event_name #arg_tuple;
                         let _ = tx.send(res);
                     }
                 });
@@ -164,13 +164,13 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             if sig.asyncness.is_some() {
                 run_arms.push(quote! {
                     Some(#events_ident::#event_name(#arg_tuple)) => {
-                        self.#event_name #arg_tuple.await;
+                        actor.#event_name #arg_tuple.await;
                     }
                 });
             } else {
                 run_arms.push(quote! {
                     Some(#events_ident::#event_name(#arg_tuple)) => {
-                        self.#event_name #arg_tuple;
+                        actor.#event_name #arg_tuple;
                     }
                 });
             }
@@ -178,9 +178,13 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     }
 
     input.items.push(parse2(quote! {
-        fn run(mut self) -> (impl Future<Output = ()>, #handle_ident #ty_generics) {
+        fn run<F>(init: F) -> (impl Future<Output = ()>, #handle_ident #ty_generics)
+        where
+            F: FnOnce(#handle_ident #ty_generics) -> Self,
+        {
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
             let handle = #handle_ident(tx);
+            let mut actor = init(handle.clone());
             let future = async move {
                 loop {
                     match rx.recv().await {
