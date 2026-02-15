@@ -9,6 +9,6 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-sactor-macros = { version = "0.1.0", path = "../sactor-macros" }
+sactor-macros = { version = "0.1.1", path = "../sactor-macros" }
 thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["full"] }

@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "sactor"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sactor-macros",
  "thiserror",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "sactor-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "manyhow",
  "proc-macro2",
