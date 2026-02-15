@@ -203,9 +203,9 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
         #[allow(non_camel_case_types)]
         enum #events_ident #impl_generics #where_clause {
-            #(#event_variants),*,
             stop,
             phantom(std::marker::PhantomData<(#(#type_params),*)>),
+            #(#event_variants),*
         }
 
         #[derive(Clone)]
