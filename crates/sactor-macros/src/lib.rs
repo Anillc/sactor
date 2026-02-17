@@ -2,8 +2,7 @@ use manyhow::manyhow;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Error, FnArg, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat, PatIdent, Result,
-    ReturnType, Type, Visibility, parse2, spanned::Spanned,
+    Error, FnArg, GenericArgument, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat, PatIdent, PathArguments, Result, ReturnType, Type, Visibility, parse2, spanned::Spanned
 };
 
 #[manyhow]
@@ -43,6 +42,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let mut handle_items = Vec::new();
     let mut run_arms = Vec::new();
     let mut sel = None; // select ident and asyncness
+    let mut error_handler = None;
     for item in &mut input.items {
         let ImplItem::Fn(ImplItemFn {
             attrs, vis, sig, ..
@@ -63,6 +63,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let mut skip = false;
         let mut reply = false;
         let mut select = false;
+        let mut error = false;
         attrs.retain(|attr| {
             let path = attr.meta.path();
             if path.is_ident("skip") {
@@ -77,6 +78,10 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 select = true;
                 return false;
             }
+            if path.is_ident("error") {
+                error = true;
+                return false;
+            }
             true
         });
         if select {
@@ -87,6 +92,16 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 ));
             }
             sel = Some((sig.ident.clone(), sig.asyncness.is_some()));
+            continue;
+        }
+        if error {
+            if error_handler.is_some() {
+                return Err(Error::new_spanned(
+                    &sig.ident,
+                    "multiple error handler methods are not allowed",
+                ));
+            }
+            error_handler = Some((sig.ident.clone(), sig.asyncness.is_some()));
             continue;
         }
         if skip {
@@ -102,11 +117,31 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         }
 
         // output type
+        let mut handle_result = false;
         let output = match &sig.output {
             ReturnType::Default => quote! { () },
             ReturnType::Type(_, ty) => {
                 reply = true;
-                quote! { #ty }
+                match ty.as_ref() {
+                    Type::Path(path) => {
+                        let Some(last) = path.path.segments.last() else {
+                            return Err(Error::new_spanned(&path.path, "expected a path with segments"));
+                        };
+                        if last.ident == "SactorResult" {
+                            let PathArguments::AngleBracketed(args) = &last.arguments else {
+                                return Err(Error::new_spanned(&last.arguments, "expected angle bracketed arguments"));
+                            };
+                            let Some(GenericArgument::Type(ty)) = args.args.first() else {
+                                return Err(Error::new_spanned(&args.args, "expected type argument"));
+                            };
+                            handle_result = true;
+                            quote! { #ty }
+                        } else {
+                            quote! { #ty }
+                        }
+                    },
+                    _ => quote! { #ty },
+                }
             }
         };
         let mut handle_sig = sig.clone();
@@ -170,21 +205,31 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             None => quote! {},
             Some(_) => quote! { .await },
         };
+        let handle_error = if handle_result {
+            quote! {
+                if let Err(e) = &mut result {
+                    actor.handle_error(e).await;
+                }
+            }
+        } else {
+            quote! {}
+        };
         if reply {
             event_variants.push(
                 quote! { #event_name(#arg_typle_type, tokio::sync::oneshot::Sender<#output>) },
             );
             run_arms.push(quote! {
                 Some(#events_ident::#event_name(#arg_tuple, tx)) => {
-                    let result = actor.#event_name #arg_tuple #aw;
-                    let _ = tx.send(result);
+                    let mut result = actor.#event_name #arg_tuple #aw;
+                    #handle_error;
                 }
             });
         } else {
             event_variants.push(quote! { #event_name(#arg_typle_type) });
             run_arms.push(quote! {
                 Some(#events_ident::#event_name(#arg_tuple)) => {
-                    actor.#event_name #arg_tuple #aw;
+                    let mut result = actor.#event_name #arg_tuple #aw;
+                    #handle_error;
                 }
             });
         }
@@ -232,6 +277,21 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 }
             };
             (future, handle)
+        }
+    })?);
+
+    let call_error_handler = match error_handler {
+        None => quote! {},
+        Some((error_handler, false)) => quote! {
+            self.#error_handler(error);
+        },
+        Some((error_handler, true)) => quote! {
+            self.#error_handler(error).await;
+        },
+    };
+    input.items.push(parse2(quote! {
+        async fn handle_error(&mut self, error: &mut sactor::error::SactorError) {
+            #call_error_handler
         }
     })?);
 

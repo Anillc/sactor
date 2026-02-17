@@ -6,4 +6,6 @@ pub type SactorResult<T> = Result<T, SactorError>;
 pub enum SactorError {
     #[error("Actor has stopped")]
     ActorStopped,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
