@@ -42,6 +42,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let mut event_variants = Vec::new();
     let mut handle_items = Vec::new();
     let mut run_arms = Vec::new();
+    let mut sel = None; // select ident and asyncness
     for item in &mut input.items {
         let ImplItem::Fn(ImplItemFn {
             attrs, vis, sig, ..
@@ -58,6 +59,40 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             _ => {}
         }
 
+        // skip/reply/select
+        let mut skip = false;
+        let mut reply = false;
+        let mut select = false;
+        attrs.retain(|attr| {
+            let path = attr.meta.path();
+            if path.is_ident("skip") {
+                skip = true;
+                return false;
+            }
+            if path.is_ident("reply") {
+                reply = true;
+                return false;
+            }
+            if path.is_ident("select") {
+                select = true;
+                return false;
+            }
+            true
+        });
+        if select {
+            if sel.is_some() {
+                return Err(Error::new_spanned(
+                    &sig.ident,
+                    "multiple select methods are not allowed",
+                ));
+            }
+            sel = Some((sig.ident.clone(), sig.asyncness.is_some()));
+            continue;
+        }
+        if skip {
+            continue;
+        }
+
         // reject method-level generics
         if !sig.generics.params.is_empty() {
             return Err(Error::new_spanned(
@@ -65,16 +100,6 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 "should not have method-level generics",
             ));
         }
-
-        // need a reply?
-        let mut reply = false;
-        attrs.retain(|attr| {
-            if attr.meta.path().is_ident("reply") {
-                reply = true;
-                return false;
-            }
-            true
-        });
 
         // output type
         let output = match &sig.output {
@@ -140,42 +165,44 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         };
 
         handle_items.push(f);
+
+        let aw = match sig.asyncness {
+            None => quote! {},
+            Some(_) => quote! { .await },
+        };
         if reply {
             event_variants.push(
                 quote! { #event_name(#arg_typle_type, tokio::sync::oneshot::Sender<#output>) },
             );
-            if sig.asyncness.is_some() {
-                run_arms.push(quote! {
-                    Some(#events_ident::#event_name(#arg_tuple, tx)) => {
-                        let fut = actor.#event_name #arg_tuple.await;
-                        let _ = tx.send(fut);
-                    }
-                });
-            } else {
-                run_arms.push(quote! {
-                    Some(#events_ident::#event_name(#arg_tuple, tx)) => {
-                        let res = actor.#event_name #arg_tuple;
-                        let _ = tx.send(res);
-                    }
-                });
-            }
+            run_arms.push(quote! {
+                Some(#events_ident::#event_name(#arg_tuple, tx)) => {
+                    let result = actor.#event_name #arg_tuple #aw;
+                    let _ = tx.send(result);
+                }
+            });
         } else {
             event_variants.push(quote! { #event_name(#arg_typle_type) });
-            if sig.asyncness.is_some() {
-                run_arms.push(quote! {
-                    Some(#events_ident::#event_name(#arg_tuple)) => {
-                        actor.#event_name #arg_tuple.await;
-                    }
-                });
-            } else {
-                run_arms.push(quote! {
-                    Some(#events_ident::#event_name(#arg_tuple)) => {
-                        actor.#event_name #arg_tuple;
-                    }
-                });
-            }
+            run_arms.push(quote! {
+                Some(#events_ident::#event_name(#arg_tuple)) => {
+                    actor.#event_name #arg_tuple #aw;
+                }
+            });
         }
     }
+
+    let select = match sel {
+        None => quote! {
+            let sel = std::future::pending::<(#events_ident #ty_generics, usize, Vec<Selection>)>();
+        },
+        Some((sel, false)) => quote! {
+            let futures: Vec<Selection> = actor.#sel();
+            let sel = futures::future::select_all(futures);
+        },
+        Some((sel, true)) => quote! {
+            let futures: Vec<Selection> = actor.#sel().await;
+            let sel = futures::future::select_all(futures);
+        },
+    };
 
     input.items.push(parse2(quote! {
         fn run<F>(init: F) -> (impl Future<Output = ()>, #handle_ident #ty_generics)
@@ -185,12 +212,22 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
             let handle = #handle_ident(tx);
             let mut actor = init(handle.clone());
+            let handle2 = handle.clone();
             let future = async move {
                 loop {
-                    match rx.recv().await {
-                        #(#run_arms),*
-                        Some(#events_ident::stop) | None => break,
-                        Some(#events_ident::phantom(_)) => unreachable!(),
+                    #select
+                    tokio::select! {
+                        biased;
+                        event = rx.recv() => {
+                            match event {
+                                #(#run_arms),*
+                                Some(#events_ident::stop) | None => break,
+                                Some(#events_ident::phantom(_)) => unreachable!(),
+                            }
+                        }
+                        event = async { sel.await.0 } => {
+                            handle2.0.send(event).unwrap();
+                        }
                     }
                 }
             };
@@ -199,6 +236,18 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     })?);
 
     Ok(quote! {
+        type Selection<'a> = std::pin::Pin<Box<dyn Future<Output = #events_ident #ty_generics> + Send + 'a>>;
+
+        #[allow(unused_macros)]
+        macro_rules! selection {
+            ($expression:expr, $variant:ident) => {
+                Box::pin(async { $expression; #events_ident::$variant(()) }) as Selection
+            };
+            ($expression:expr, $variant:ident, $name:pat => $($arg:tt)*) => {
+                Box::pin(async { let $name = $expression; #events_ident::$variant($($arg)*) }) as Selection
+            };
+        }
+
         #input
 
         #[allow(non_camel_case_types)]
