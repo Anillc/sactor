@@ -2,7 +2,8 @@ use manyhow::manyhow;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Error, FnArg, GenericArgument, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat, PatIdent, PathArguments, Result, ReturnType, Type, Visibility, parse2, spanned::Spanned
+    Error, FnArg, GenericArgument, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat,
+    PatIdent, PathArguments, Result, ReturnType, Type, Visibility, parse2, spanned::Spanned,
 };
 
 #[manyhow]
@@ -59,7 +60,6 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             _ => {}
         }
 
-        // skip/reply/select
         let mut skip = false;
         let mut reply = false;
         let mut select = false;
@@ -78,7 +78,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 select = true;
                 return false;
             }
-            if path.is_ident("error") {
+            if path.is_ident("handle_error") {
                 error = true;
                 return false;
             }
@@ -117,7 +117,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         }
 
         // output type
-        let mut handle_result = false;
+        let mut handle_error = false;
         let output = match &sig.output {
             ReturnType::Default => quote! { () },
             ReturnType::Type(_, ty) => {
@@ -125,21 +125,30 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 match ty.as_ref() {
                     Type::Path(path) => {
                         let Some(last) = path.path.segments.last() else {
-                            return Err(Error::new_spanned(&path.path, "expected a path with segments"));
+                            return Err(Error::new_spanned(
+                                &path.path,
+                                "expected a path with segments",
+                            ));
                         };
                         if last.ident == "SactorResult" {
                             let PathArguments::AngleBracketed(args) = &last.arguments else {
-                                return Err(Error::new_spanned(&last.arguments, "expected angle bracketed arguments"));
+                                return Err(Error::new_spanned(
+                                    &last.arguments,
+                                    "expected angle bracketed arguments",
+                                ));
                             };
                             let Some(GenericArgument::Type(ty)) = args.args.first() else {
-                                return Err(Error::new_spanned(&args.args, "expected type argument"));
+                                return Err(Error::new_spanned(
+                                    &args.args,
+                                    "expected type argument",
+                                ));
                             };
-                            handle_result = true;
+                            handle_error = true;
                             quote! { #ty }
                         } else {
                             quote! { #ty }
                         }
-                    },
+                    }
                     _ => quote! { #ty },
                 }
             }
@@ -205,14 +214,13 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             None => quote! {},
             Some(_) => quote! { .await },
         };
-        let handle_error = if handle_result {
-            quote! {
+        let handle_error = match handle_error {
+            false => quote! {},
+            true => quote! {
                 if let Err(e) = &mut result {
-                    actor.__sactor__handle_error(e).await;
+                    actor.__sactor_handle_error(e).await;
                 }
-            }
-        } else {
-            quote! {}
+            },
         };
         if reply {
             event_variants.push(

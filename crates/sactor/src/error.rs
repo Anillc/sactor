@@ -1,11 +1,18 @@
-use thiserror::Error;
+use std::error::Error;
 
 pub type SactorResult<T> = Result<T, SactorError>;
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum SactorError {
-    #[error("Actor has stopped")]
     ActorStopped,
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    Other(anyhow::Error),
+}
+
+impl<E> From<E> for SactorError
+where
+    E: Error + Send + Sync + 'static,
+{
+    fn from(err: E) -> Self {
+        SactorError::Other(err.into())
+    }
 }
