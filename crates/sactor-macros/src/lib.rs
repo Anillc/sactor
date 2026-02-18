@@ -175,8 +175,8 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let f = if reply {
             quote! {
                 #vis #handle_sig {
-                    let (tx, rx) = tokio::sync::oneshot::channel();
-                    self.0.send(#events_ident::#event_name(#arg_tuple, tx))
+                    let (tx, rx) = futures::channel::oneshot::channel();
+                    self.0.unbounded_send(#events_ident::#event_name(#arg_tuple, tx))
                         .map_err(|_| sactor::error::SactorError::ActorStopped)?;
                     Ok(rx.await.map_err(|_| sactor::error::SactorError::ActorStopped)?)
                 }
@@ -184,7 +184,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         } else {
             quote! {
                 #vis #handle_sig {
-                    self.0.send(#events_ident::#event_name(#arg_tuple))
+                    self.0.unbounded_send(#events_ident::#event_name(#arg_tuple))
                         .map_err(|_| sactor::error::SactorError::ActorStopped)?;
                     Ok(())
                 }
@@ -207,10 +207,10 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         };
         if reply {
             event_variants.push(
-                quote! { #event_name(#arg_typle_type, tokio::sync::oneshot::Sender<#output>) },
+                quote! { #event_name(#arg_typle_type, futures::channel::oneshot::Sender<#output>) },
             );
             run_arms.push(quote! {
-                Some(#events_ident::#event_name(#arg_tuple, tx)) => {
+                Ok(#events_ident::#event_name(#arg_tuple, tx)) => {
                     let mut result = actor.#event_name #arg_tuple #aw;
                     #handle_error;
                     let _ = tx.send(result);
@@ -219,7 +219,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         } else {
             event_variants.push(quote! { #event_name(#arg_typle_type) });
             run_arms.push(quote! {
-                Some(#events_ident::#event_name(#arg_tuple)) => {
+                Ok(#events_ident::#event_name(#arg_tuple)) => {
                     let mut result = actor.#event_name #arg_tuple #aw;
                     #handle_error;
                 }
@@ -246,24 +246,24 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         where
             F: FnOnce(#handle_ident #ty_generics) -> Self,
         {
-            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            use futures::FutureExt as _;
+            let (tx, mut rx) = futures::channel::mpsc::unbounded();
             let handle = #handle_ident(tx);
             let mut actor = init(handle.clone());
             let handle2 = handle.clone();
             let future = async move {
                 loop {
                     #select
-                    tokio::select! {
-                        biased;
+                    futures::select_biased! {
                         event = rx.recv() => {
                             match event {
                                 #(#run_arms),*
-                                Some(#events_ident::__sactor_stop) | None => break,
-                                Some(#events_ident::__sactor_phantom(_)) => unreachable!(),
+                                Ok(#events_ident::__sactor_stop) | Err(_) => break,
+                                Ok(#events_ident::__sactor_phantom(_)) => unreachable!(),
                             }
                         }
-                        event = async { sel.await.0 } => {
-                            handle2.0.send(event).unwrap();
+                        event = async { sel.await.0 }.fuse() => {
+                            handle2.0.unbounded_send(event).unwrap();
                         }
                     }
                 }
@@ -310,7 +310,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         }
 
         #[derive(Clone)]
-        #handle_vis struct #handle_ident #impl_generics #where_clause (tokio::sync::mpsc::UnboundedSender<#events_ident #ty_generics>);
+        #handle_vis struct #handle_ident #impl_generics #where_clause (futures::channel::mpsc::UnboundedSender<#events_ident #ty_generics>);
         impl #impl_generics #handle_ident #ty_generics #where_clause {
             #(#handle_items)*
 
@@ -318,12 +318,8 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 !self.0.is_closed()
             }
 
-            #handle_vis async fn closed(&self) {
-                self.0.closed().await;
-            }
-
             #handle_vis fn stop(&self) {
-                let _ = self.0.send(#events_ident::__sactor_stop);
+                let _ = self.0.unbounded_send(#events_ident::__sactor_stop);
             }
         }
     })
