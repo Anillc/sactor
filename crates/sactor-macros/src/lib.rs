@@ -184,6 +184,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                     let (tx, rx) = futures::channel::oneshot::channel();
                     self.0.unbounded_send(#events_ident::#event_name(#arg_tuple, tx))
                         .map_err(|_| sactor::error::SactorError::ActorStopped)?;
+                    #[allow(clippy::needless_question_mark)]
                     Ok(rx.await.map_err(|_| sactor::error::SactorError::ActorStopped)?)
                 }
             }
