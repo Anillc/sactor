@@ -2,8 +2,8 @@ use manyhow::manyhow;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Error, FnArg, GenericArgument, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat,
-    PatIdent, PathArguments, Result, ReturnType, Type, Visibility, parse2, spanned::Spanned,
+    Error, FnArg, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat,
+    PatIdent, Result, ReturnType, Type, Visibility, parse2, spanned::Spanned,
 };
 
 #[manyhow]
@@ -122,35 +122,18 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             ReturnType::Default => quote! { () },
             ReturnType::Type(_, ty) => {
                 reply = true;
-                match ty.as_ref() {
-                    Type::Path(path) => {
-                        let Some(last) = path.path.segments.last() else {
-                            return Err(Error::new_spanned(
-                                &path.path,
-                                "expected a path with segments",
-                            ));
-                        };
-                        if last.ident == "SactorResult" {
-                            let PathArguments::AngleBracketed(args) = &last.arguments else {
-                                return Err(Error::new_spanned(
-                                    &last.arguments,
-                                    "expected angle bracketed arguments",
-                                ));
-                            };
-                            let Some(GenericArgument::Type(ty)) = args.args.first() else {
-                                return Err(Error::new_spanned(
-                                    &args.args,
-                                    "expected type argument",
-                                ));
-                            };
-                            handle_error = true;
-                            quote! { #ty }
-                        } else {
-                            quote! { #ty }
-                        }
+                if let Type::Path(path) = ty.as_ref() {
+                    let Some(last) = path.path.segments.last() else {
+                        return Err(Error::new_spanned(
+                            &path.path,
+                            "expected a path with segments",
+                        ));
+                    };
+                    if last.ident == "SactorResult" {
+                        handle_error = true;
                     }
-                    _ => quote! { #ty },
                 }
+                quote! { #ty }
             }
         };
         let mut handle_sig = sig.clone();
@@ -230,6 +213,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 Some(#events_ident::#event_name(#arg_tuple, tx)) => {
                     let mut result = actor.#event_name #arg_tuple #aw;
                     #handle_error;
+                    let _ = tx.send(result);
                 }
             });
         } else {

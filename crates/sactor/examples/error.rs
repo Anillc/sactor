@@ -30,5 +30,5 @@ async fn main() {
     let (future, app) = App::run(|_| App {});
     tokio::spawn(future);
 
-    app.test().await.unwrap_err();
+    app.test().await.unwrap().unwrap_err();
 }
