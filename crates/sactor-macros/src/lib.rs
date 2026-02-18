@@ -2,8 +2,8 @@ use manyhow::manyhow;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Error, FnArg, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat,
-    PatIdent, Result, ReturnType, Type, Visibility, parse2, spanned::Spanned,
+    Error, FnArg, GenericParam, Ident, ImplItem, ImplItemFn, ItemImpl, Pat, PatIdent, Result,
+    ReturnType, Type, Visibility, parse2, spanned::Spanned,
 };
 
 #[manyhow]
