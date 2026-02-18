@@ -208,7 +208,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let handle_error = if handle_result {
             quote! {
                 if let Err(e) = &mut result {
-                    actor.handle_error(e).await;
+                    actor.__sactor__handle_error(e).await;
                 }
             }
         } else {
@@ -266,8 +266,8 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                         event = rx.recv() => {
                             match event {
                                 #(#run_arms),*
-                                Some(#events_ident::stop) | None => break,
-                                Some(#events_ident::phantom(_)) => unreachable!(),
+                                Some(#events_ident::__sactor_stop) | None => break,
+                                Some(#events_ident::__sactor_phantom(_)) => unreachable!(),
                             }
                         }
                         event = async { sel.await.0 } => {
@@ -290,7 +290,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         },
     };
     input.items.push(parse2(quote! {
-        async fn handle_error(&mut self, error: &mut sactor::error::SactorError) {
+        async fn __sactor_handle_error(&mut self, error: &mut sactor::error::SactorError) {
             #call_error_handler
         }
     })?);
@@ -312,8 +312,8 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
         #[allow(non_camel_case_types)]
         enum #events_ident #impl_generics #where_clause {
-            stop,
-            phantom(std::marker::PhantomData<(#(#type_params),*)>),
+            __sactor_stop,
+            __sactor_phantom(std::marker::PhantomData<(#(#type_params),*)>),
             #(#event_variants),*
         }
 
@@ -331,7 +331,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             }
 
             #handle_vis fn stop(&self) {
-                let _ = self.0.send(#events_ident::stop);
+                let _ = self.0.send(#events_ident::__sactor_stop);
             }
         }
     })
