@@ -1,10 +1,7 @@
 use std::time::Duration;
 
 use sactor::sactor;
-use tokio::{
-    signal::ctrl_c,
-    time::{Interval, interval},
-};
+use tokio::time::{Interval, interval};
 
 struct App {
     ticker: Interval,
@@ -31,7 +28,5 @@ impl App {
 #[tokio::main]
 async fn main() {
     let (future, _app) = App::run(|_| App::new());
-    tokio::spawn(future);
-
-    ctrl_c().await.unwrap();
+    future.await;
 }

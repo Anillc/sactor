@@ -61,7 +61,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         }
 
         let mut skip = false;
-        let mut reply = false;
+        let mut reply = None;
         let mut select = false;
         let mut error = false;
         attrs.retain(|attr| {
@@ -71,7 +71,11 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 return false;
             }
             if path.is_ident("reply") {
-                reply = true;
+                reply = Some(true);
+                return false;
+            }
+            if path.is_ident("no_reply") {
+                reply = Some(false);
                 return false;
             }
             if path.is_ident("select") {
@@ -118,10 +122,12 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
         // output type
         let mut handle_error = false;
-        let output = match &sig.output {
-            ReturnType::Default => quote! { () },
-            ReturnType::Type(_, ty) => {
-                reply = true;
+        let output = match (&sig.output, &reply) {
+            (ReturnType::Default, _) | (_, Some(false)) => quote! { () },
+            (ReturnType::Type(_, ty), _) => {
+                if reply.is_none() {
+                    reply = Some(true);
+                }
                 if let Type::Path(path) = ty.as_ref() {
                     let Some(last) = path.path.segments.last() else {
                         return Err(Error::new_spanned(
@@ -172,7 +178,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let arg_typle_type = quote! { (#(#arg_types),*) };
         let arg_tuple = quote! { (#(#arg_names),*) };
 
-        let f = if reply {
+        let f = if reply.unwrap_or(false) {
             quote! {
                 #vis #handle_sig {
                     let (tx, rx) = futures::channel::oneshot::channel();
@@ -205,7 +211,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 }
             },
         };
-        if reply {
+        if reply.unwrap_or(false) {
             event_variants.push(
                 quote! { #event_name(#arg_typle_type, futures::channel::oneshot::Sender<#output>) },
             );

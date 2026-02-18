@@ -15,5 +15,5 @@ async fn main() {
     tokio::spawn(future);
 
     let handle = handle.clone();
-    println!("Greeting: {:?}", handle.greet().await);
+    println!("Greeting: {:?}", handle.greet().await.unwrap());
 }
