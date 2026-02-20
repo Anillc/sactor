@@ -122,9 +122,9 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
         // output type
         let mut handle_error = false;
-        let output = match (&sig.output, &reply) {
-            (ReturnType::Default, _) | (_, Some(false)) => quote! { () },
-            (ReturnType::Type(_, ty), _) => {
+        let output = match &sig.output {
+            ReturnType::Default => quote! { () },
+            ReturnType::Type(_, ty) => {
                 if reply.is_none() {
                     reply = Some(true);
                 }
@@ -139,7 +139,11 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                         handle_error = true;
                     }
                 }
-                quote! { #ty }
+                if let Some(false) = reply {
+                    quote! { () }
+                } else {
+                    quote! { #ty }
+                }
             }
         };
         let mut handle_sig = sig.clone();

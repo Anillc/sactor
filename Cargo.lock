@@ -311,7 +311,7 @@ checksum = "b50b8869d9fc858ce7266cce0194bd74df58b9d0e3f6df3a9fc8eb470d95c09d"
 
 [[package]]
 name = "sactor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "futures",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "sactor-macros"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "manyhow",
  "proc-macro2",
