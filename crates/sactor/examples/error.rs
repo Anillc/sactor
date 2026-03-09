@@ -1,7 +1,5 @@
-use sactor::{
-    error::{SactorError, SactorResult},
-    sactor,
-};
+use anyhow::{Error, Result};
+use sactor::sactor;
 use thiserror::Error;
 
 struct App {}
@@ -14,13 +12,13 @@ enum AppError {
 
 #[sactor]
 impl App {
-    fn test(&self) -> SactorResult<()> {
+    fn test(&self) -> Result<()> {
         Err(AppError::ExampleError)?;
         Ok(())
     }
 
     #[handle_error]
-    fn handle_error(&self, error: &mut SactorError) {
+    fn handle_error(&self, error: &mut Error) {
         println!("Error: {:?}", error);
     }
 }

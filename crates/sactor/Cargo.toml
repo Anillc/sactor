@@ -11,8 +11,8 @@ homepage.workspace = true
 [dependencies]
 anyhow = { version = "1.0.101", features = ["backtrace"] }
 futures = "0.3.32"
-sactor-macros = { version = "0.1.5", path = "../sactor-macros" }
+sactor-macros = { version = "0.1.6", path = "../sactor-macros" }
+thiserror = "2.0.18"
 
 [dev-dependencies]
-thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["full"] }

@@ -135,7 +135,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                             "expected a path with segments",
                         ));
                     };
-                    if last.ident == "SactorResult" {
+                    if last.ident == "Result" {
                         handle_error = true;
                     }
                 }
@@ -148,7 +148,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         };
         let mut handle_sig = sig.clone();
         handle_sig.asyncness = Some(parse2(quote! { async })?);
-        handle_sig.output = parse2(quote! { -> sactor::error::SactorResult<#output> })?;
+        handle_sig.output = parse2(quote! { -> anyhow::Result<#output> })?;
 
         // input args
         let mut arg_types = Vec::new();
@@ -293,7 +293,7 @@ pub fn sactor(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         },
     };
     input.items.push(parse2(quote! {
-        async fn __sactor_handle_error(&mut self, error: &mut sactor::error::SactorError) {
+        async fn __sactor_handle_error(&mut self, error: &mut anyhow::Error) {
             #call_error_handler
         }
     })?);
